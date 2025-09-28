@@ -15,6 +15,12 @@ Works fully offline on a LAN using a local domain (e.g. `n8n-node.local`). For a
 ## 1) Prereqs
 
 - Docker and Docker Compose v2
+
+```bash
+sudo bash ./scripts/docker_prereq.sh
+sudo bash ./scripts/docker_prereq2.sh
+```
+
 - Shell with `openssl`
 - Local name resolution for `${SUBDOMAIN}.${DOMAIN_NAME}` (add to `/etc/hosts` or your LAN DNS)
 

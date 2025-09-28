@@ -15,7 +15,7 @@ services:
       - postgres_password
       - postgres_db
     healthcheck:
-      # If you change the user/db secrets, update these flags too
+      # Update if you change DB/user names in secrets
       test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
       interval: 5s
       timeout: 3s
@@ -27,24 +27,34 @@ services:
     command:
       - --providers.docker=true
       - --providers.docker.exposedbydefault=false
-      # HTTP (80) → redirect to HTTPS
+      # HTTP (80) -> redirect to HTTPS
       - --entrypoints.web.address=:80
       - --entrypoints.web.http.redirections.entryPoint.to=websecure
       - --entrypoints.web.http.redirections.entrypoint.scheme=https
       # HTTPS (443)
       - --entrypoints.websecure.address=:443
-      # File provider for self-signed cert
+      # Use our self-signed certificate via file provider
       - --providers.file.filename=/etc/traefik/dynamic.yaml
-      # Optional dashboard (LAN only; comment in if needed)
+
+      # --- ACME (public) — enable when using real DNS ---
+      # - --certificatesresolvers.mytls.acme.tlschallenge=true
+      # - --certificatesresolvers.mytls.acme.emailFile=/run/secrets/acme_email
+      # - --certificatesresolvers.mytls.acme.storage=/letsencrypt/acme.json
+      # --------------------------------------------------
+
+      # Optional dashboard (LAN only; not internet-facing)
       # - --api.insecure=true
     ports:
       - "80:80"
       - "443:443"
-      # - "8080:8080" # dashboard
+      # - "8080:8080"  # dashboard
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock:ro
       - ./certs:/certs:ro
       - ./traefik_dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+      - traefik_data:/letsencrypt
+    # secrets:
+    #   - acme_email   # uncomment if using ACME
 
   n8n:
     image: docker.n8n.io/n8nio/n8n:latest
@@ -52,9 +62,6 @@ services:
     depends_on:
       postgres:
         condition: service_healthy
-    # Optional: also expose to localhost directly (bypass Traefik)
-    # ports:
-    #   - "127.0.0.1:5678:5678"
     labels:
       - traefik.enable=true
       - traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
@@ -76,7 +83,7 @@ services:
       TZ: ${GENERIC_TIMEZONE}
       GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
 
-      # n8n URLs (now HTTPS via Traefik)
+      # n8n external URL (now HTTPS via Traefik; no trailing slash)
       N8N_HOST: ${SUBDOMAIN}.${DOMAIN_NAME}
       N8N_PORT: 5678
       N8N_PROTOCOL: https
@@ -100,6 +107,7 @@ services:
       - postgres_user
       - postgres_password
       - postgres_db
+      # - acme_email  # only if enabling ACME
 
 secrets:
   postgres_user:
@@ -110,7 +118,10 @@ secrets:
     file: ./secrets/postgres_db.txt
   n8n_encryption_key:
     file: ./secrets/n8n_encryption_key.txt
+  # acme_email:
+  #   file: ./secrets/acme_email.txt  # only for ACME
 
 volumes:
   pgdata:
   n8n_data:
+  traefik_data:

@@ -1,6 +1,6 @@
 # Small project helping deploy n8n + Postgres behind Traefik on local infra
 
-This repo brings up a production‑like n8n on Docker Compose:
+This repo brings up a production‑like n8n on Docker Compose on UBUNTU:
 
 - Traefik reverse proxy with **HTTP→HTTPS** redirect
 - Self‑signed TLS certificate for `https://$SUBDOMAIN.$DOMAIN_NAME`

@@ -1,4 +1,4 @@
-# n8n + Postgres behind Traefik (local domain, self‑signed TLS)
+# Small project helping deploy n8n + Postgres behind Traefik on local infra
 
 This repo brings up a production‑like n8n on Docker Compose:
 
@@ -8,26 +8,21 @@ This repo brings up a production‑like n8n on Docker Compose:
 - Postgres with persistent volume
 - Secrets via **Docker secrets** (`*_FILE` env pattern) — no passwords in compose
 
-Works fully offline on a LAN using a local domain (e.g. `n8n-node.local`). For a public domain + Let’s Encrypt, see **Switch to real HTTPS (ACME)**.
+For a public domain + Let’s Encrypt, better read the n8n manual).
 
 ---
 
 ## 1) Prereqs
 
-- Docker and Docker Compose v2
+- Docker and Docker Compose
 
 ```bash
-sudo bash ./scripts/docker_prereq.sh
-sudo bash ./scripts/docker_prereq2.sh
+sudo bash ./scripts/docker_prereq.sh #removes conflicting packages and installs docker components
+sudo bash ./scripts/docker_prereq2.sh #adds a user to group 
 ```
 
 - Shell with `openssl`
-- Local name resolution for `${SUBDOMAIN}.${DOMAIN_NAME}` (add to `/etc/hosts` or your LAN DNS)
-
-Example `/etc/hosts` entry (replace IP with your host):
-```
-192.168.1.50  n8n-node.local
-```
+- On web client side name resolution for `${SUBDOMAIN}.${DOMAIN_NAME}` required
 
 ---
 
@@ -37,7 +32,7 @@ Copy the env template and edit non‑secrets:
 
 ```bash
 cp .env.example .env
-$EDITOR .env
+nano .env
 ```
 
 `.env` controls: domain/hostname and timezone.
@@ -53,8 +48,6 @@ This creates Docker secrets and a self‑signed certificate:
 ```
 
 It writes to `secrets/` and `certs/` and won’t overwrite existing files.
-
-> To get a trusted padlock locally, consider `mkcert` instead of a generic self‑signed cert (see notes inside `bootstrap.sh`).
 
 ---
 
@@ -99,44 +92,10 @@ Restore (destructive):
 ```bash
 docker compose exec -T postgres   psql -U n8n -d n8n < backup_YYYY-MM-DD.sql
 ```
-
----
-
-## 6) Switch to real HTTPS (ACME / Let’s Encrypt)
-
-When you have a public DNS name pointing at this host:
-
-1. Edit `compose.yaml`  
-   - In **traefik**: enable ACME flags (see commented lines), remove the file‑provider TLS if desired.  
-   - In **n8n** labels: set router entrypoint to `websecure`, `tls=true`, and add `certresolver`.  
-2. Update `.env` with the real domain (e.g. `SUBDOMAIN=n8n`, `DOMAIN_NAME=example.com`).  
-3. Restart:
-   ```bash
-   docker compose up -d
-   ```
-
-For private/internal domains, you can also use DNS‑01 (provider API), or keep self‑signed/mkcert.
-
----
-
-## 7) Troubleshooting
-
-- **Browser warns about certificate**: expected with self‑signed. Trust the cert on the client, or use `mkcert`.  
-- **n8n can’t connect to DB**: ensure `DB_POSTGRESDB_*_FILE` secrets exist and Postgres is healthy (`pg_isready`).  
-- **Traefik 404**: verify `Host()` matches `SUBDOMAIN.DOMAIN_NAME` exactly and your client resolves it to the host IP.  
-- **Credentials lost after restart**: ensure the `N8N_ENCRYPTION_KEY` secret stays the same (don’t regenerate).  
-- **Ports in use**: make sure nothing else is bound to `80/443` on the host.
-
 ---
 
 ## Security notes
 
 - Secrets live in `./secrets/` (git‑ignored) and are consumed via Docker secrets (`*_FILE` env).  
 - Volumes persist in Docker managed storage (`n8n_data`, `pgdata`).  
-- Traefik dashboard is **disabled** by default; enable only on trusted networks.
-
----
-
-## License
-
-MIT
+- Traefik dashboard is **disabled** by default.

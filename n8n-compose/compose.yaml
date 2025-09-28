@@ -1,0 +1,116 @@
+version: "3.9"
+
+services:
+  postgres:
+    image: postgres:16
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER_FILE: /run/secrets/postgres_user
+      POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
+      POSTGRES_DB_FILE: /run/secrets/postgres_db
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+    secrets:
+      - postgres_user
+      - postgres_password
+      - postgres_db
+    healthcheck:
+      # If you change the user/db secrets, update these flags too
+      test: ["CMD-SHELL", "pg_isready -U n8n -d n8n"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  traefik:
+    image: traefik:v2.11
+    restart: unless-stopped
+    command:
+      - --providers.docker=true
+      - --providers.docker.exposedbydefault=false
+      # HTTP (80) → redirect to HTTPS
+      - --entrypoints.web.address=:80
+      - --entrypoints.web.http.redirections.entryPoint.to=websecure
+      - --entrypoints.web.http.redirections.entrypoint.scheme=https
+      # HTTPS (443)
+      - --entrypoints.websecure.address=:443
+      # File provider for self-signed cert
+      - --providers.file.filename=/etc/traefik/dynamic.yaml
+      # Optional dashboard (LAN only; comment in if needed)
+      # - --api.insecure=true
+    ports:
+      - "80:80"
+      - "443:443"
+      # - "8080:8080" # dashboard
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock:ro
+      - ./certs:/certs:ro
+      - ./traefik_dynamic.yaml:/etc/traefik/dynamic.yaml:ro
+
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    restart: unless-stopped
+    depends_on:
+      postgres:
+        condition: service_healthy
+    # Optional: also expose to localhost directly (bypass Traefik)
+    # ports:
+    #   - "127.0.0.1:5678:5678"
+    labels:
+      - traefik.enable=true
+      - traefik.http.routers.n8n.rule=Host(`${SUBDOMAIN}.${DOMAIN_NAME}`)
+      - traefik.http.routers.n8n.entrypoints=websecure
+      - traefik.http.routers.n8n.tls=true
+      - traefik.http.services.n8n.loadbalancer.server.port=5678
+      # Optional headers hardening
+      - traefik.http.middlewares.n8n-h.headers.SSLRedirect=true
+      - traefik.http.middlewares.n8n-h.headers.STSSeconds=315360000
+      - traefik.http.middlewares.n8n-h.headers.browserXSSFilter=true
+      - traefik.http.middlewares.n8n-h.headers.contentTypeNosniff=true
+      - traefik.http.middlewares.n8n-h.headers.forceSTSHeader=true
+      - traefik.http.middlewares.n8n-h.headers.SSLHost=${DOMAIN_NAME}
+      - traefik.http.middlewares.n8n-h.headers.STSIncludeSubdomains=true
+      - traefik.http.middlewares.n8n-h.headers.STSPreload=true
+      - traefik.http.routers.n8n.middlewares=n8n-h@docker
+    environment:
+      NODE_ENV: production
+      TZ: ${GENERIC_TIMEZONE}
+      GENERIC_TIMEZONE: ${GENERIC_TIMEZONE}
+
+      # n8n URLs (now HTTPS via Traefik)
+      N8N_HOST: ${SUBDOMAIN}.${DOMAIN_NAME}
+      N8N_PORT: 5678
+      N8N_PROTOCOL: https
+      WEBHOOK_URL: https://${SUBDOMAIN}.${DOMAIN_NAME}
+
+      # Secrets via *_FILE
+      N8N_ENCRYPTION_KEY_FILE: /run/secrets/n8n_encryption_key
+
+      # Postgres wiring
+      DB_TYPE: postgresdb
+      DB_POSTGRESDB_HOST: postgres
+      DB_POSTGRESDB_PORT: 5432
+      DB_POSTGRESDB_DATABASE_FILE: /run/secrets/postgres_db
+      DB_POSTGRESDB_USER_FILE: /run/secrets/postgres_user
+      DB_POSTGRESDB_PASSWORD_FILE: /run/secrets/postgres_password
+    volumes:
+      - n8n_data:/home/node/.n8n
+      - ./local-files:/files
+    secrets:
+      - n8n_encryption_key
+      - postgres_user
+      - postgres_password
+      - postgres_db
+
+secrets:
+  postgres_user:
+    file: ./secrets/postgres_user.txt
+  postgres_password:
+    file: ./secrets/postgres_password.txt
+  postgres_db:
+    file: ./secrets/postgres_db.txt
+  n8n_encryption_key:
+    file: ./secrets/n8n_encryption_key.txt
+
+volumes:
+  pgdata:
+  n8n_data:

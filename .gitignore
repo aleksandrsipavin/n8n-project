@@ -1,0 +1,12 @@
+# local artifacts
+secrets/
+certs/
+local-files/
+
+# editor/OS
+.DS_Store
+*.swp
+*.swo
+
+# docker
+*.log
